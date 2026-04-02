@@ -24,5 +24,6 @@ class Config:
         RABBITMQ_QUEUE_NAME (str): The name of the RabbitMQ queue to consume events from.
     """
     MONGO_URI = os.getenv("MONGO_URI")
-    DATABASE_NAME = os.getenv("DATABASE_NAME")
+    # Keep order data isolated in its own DB unless explicitly overridden.
+    DATABASE_NAME = os.getenv("ORDER_DATABASE_NAME") or os.getenv("DATABASE_NAME") or "orderdb"
     RABBITMQ_QUEUE_NAME = os.getenv("RABBITMQ_QUEUE_NAME")

@@ -36,8 +36,8 @@ services:
     environment:
       - FLASK_APP=order_service.wsgi:app
       - FLASK_ENV=${FLASK_ENV}
-      - MONGO_URI=mongodb://${MONGO_USERNAME}:${MONGO_PASSWORD}@mongodb:27017/${DATABASE_NAME}?authSource=admin
-      - DATABASE_NAME=${DATABASE_NAME}
+      - MONGO_URI=${MONGO_URI}
+      - ORDER_DATABASE_NAME=${ORDER_DATABASE_NAME:-orderdb}
       - RABBITMQ_HOST=${RABBITMQ_HOST}
       - RABBITMQ_PORT=${RABBITMQ_PORT}
       - RABBITMQ_USER=${RABBITMQ_ORDER_USER}
@@ -59,7 +59,7 @@ services:
     environment:
       - FLASK_APP=user_service_v1.wsgi:app
       - FLASK_ENV=${FLASK_ENV}
-      - MONGO_URI=mongodb://${MONGO_USERNAME}:${MONGO_PASSWORD}@mongodb:27017/${DATABASE_NAME}?authSource=admin
+      - MONGO_URI=${MONGO_URI}
       - DATABASE_NAME=${DATABASE_NAME}
       - RABBITMQ_HOST=${RABBITMQ_HOST}
       - RABBITMQ_PORT=${RABBITMQ_PORT}
@@ -82,7 +82,7 @@ services:
     environment:
       - FLASK_APP=user_service_v2.wsgi:app
       - FLASK_ENV=${FLASK_ENV}
-      - MONGO_URI=mongodb://${MONGO_USERNAME}:${MONGO_PASSWORD}@mongodb:27017/${DATABASE_NAME}?authSource=admin
+      - MONGO_URI=${MONGO_URI}
       - DATABASE_NAME=${DATABASE_NAME}
       - RABBITMQ_HOST=${RABBITMQ_HOST}
       - RABBITMQ_PORT=${RABBITMQ_PORT}
