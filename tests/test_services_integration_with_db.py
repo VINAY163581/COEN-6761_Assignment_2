@@ -13,25 +13,19 @@ load_dotenv()
 # Fixture to manage Docker Compose
 @pytest.fixture(scope="module", autouse=True)
 def docker_compose():
-    # Start the standalone RabbitMQ project first so the shared network exists.
-    subprocess.run(
-        ["docker", "compose", "-f", "docker-compose.rabbitmq.yml", "up", "-d"],
-        check=True
-    )
-
-    wait_for_rabbitmq()
-
     # Start Docker Compose
     subprocess.run(
         ["docker", "compose", "-f", "docker-compose.test.yml", "up", "--build", "-d"],
         check=True
     )
-    
-    # Wait for services to be ready
+
+    wait_for_rabbitmq()
+
+    # Wait for Kong admin API to be ready
     wait_for_service("http://localhost:8001/")
-    
+
     yield  # Run tests
-    
+
     # Tear down Docker Compose
     # subprocess.run(
     #     ["docker", "compose", "-f", "docker-compose.test.yml", "down", "-v"],
@@ -49,19 +43,17 @@ def wait_for_service(url, timeout=200):
             time.sleep(1)
     raise TimeoutError(f"Service at {url} not ready")
 
-def wait_for_rabbitmq(timeout=200):
+def wait_for_rabbitmq(timeout=60):
+    rabbitmq_url = os.getenv("RABBITMQ_URL")
     start = time.time()
-    credentials = pika.PlainCredentials(os.getenv("RABBITMQ_USER"), os.getenv("RABBITMQ_PASSWORD"))
     while time.time() - start < timeout:
         try:
-            connection = pika.BlockingConnection(
-                pika.ConnectionParameters(host="localhost", port=5673, credentials=credentials, socket_timeout=2)
-            )
+            connection = pika.BlockingConnection(pika.URLParameters(rabbitmq_url))
             connection.close()
             return
         except Exception:
-            time.sleep(1)
-    raise TimeoutError("RabbitMQ at localhost:5673 not ready")
+            time.sleep(2)
+    raise TimeoutError(f"RabbitMQ at {rabbitmq_url} not ready")
 
 # Fixture for API base URL
 @pytest.fixture(scope="module")
@@ -71,13 +63,7 @@ def api_base_url():
 # Fixture for MongoDB client
 @pytest.fixture(scope="module")
 def mongo_client():
-    client = pymongo.MongoClient(
-        host="localhost", 
-        port=27017,
-        username=os.getenv("MONGO_USERNAME"),
-        password=os.getenv("MONGO_PASSWORD"),
-        authSource="admin"
-        )
+    client = pymongo.MongoClient(os.getenv("MONGO_URI"))
     yield client
     client.close()
 

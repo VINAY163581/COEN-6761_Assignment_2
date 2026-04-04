@@ -27,6 +27,7 @@ RABBITMQ_HOST = os.getenv('RABBITMQ_HOST')
 RABBITMQ_PORT = int(os.getenv('RABBITMQ_PORT'))
 RABBITMQ_USER = os.getenv('RABBITMQ_USER', 'admin')
 RABBITMQ_PASSWORD = os.getenv('RABBITMQ_PASSWORD', 'admin')
+RABBITMQ_VHOST = os.getenv('RABBITMQ_VHOST', '/')
 
 def get_connection() -> pika.BlockingConnection:
     """
@@ -35,8 +36,14 @@ def get_connection() -> pika.BlockingConnection:
         pika.BlockingConnection: A connection to the RabbitMQ server.
     """
     credentials = pika.PlainCredentials(RABBITMQ_USER, RABBITMQ_PASSWORD)
+    # Check if using CloudAMQP URL directly
+    rabbitmq_url = os.getenv('RABBITMQ_URL')
+    if rabbitmq_url:
+        return pika.BlockingConnection(pika.URLParameters(rabbitmq_url))
+        
     return pika.BlockingConnection(pika.ConnectionParameters(host=RABBITMQ_HOST,
                                                              port=RABBITMQ_PORT,
+                                                             virtual_host=RABBITMQ_VHOST,
                                                              credentials=credentials))
 
 def create_channel(queue_name: str) -> Tuple[pika.channel.Channel, pika.BlockingConnection]:

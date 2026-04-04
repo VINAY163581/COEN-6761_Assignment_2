@@ -1,32 +1,4 @@
-
-
 services:
-  mongodb:
-    image: mongo:latest
-    container_name: mongo-container
-    hostname: mongodb
-    environment:
-      - MONGO_INITDB_DATABASE=${DATABASE_NAME}
-      - MONGO_INITDB_ROOT_USERNAME=${MONGO_USERNAME}
-      - MONGO_INITDB_ROOT_PASSWORD=${MONGO_PASSWORD}
-    ports:
-      - "27017:27017"
-    volumes:
-      - mongodb_data:/data/db
-  
-  mongodb-setup:
-    image: python:3.10-slim
-    container_name: mongo-setup
-    build:
-      context: .
-      dockerfile: src/shared/config/mongodb/Dockerfile
-    depends_on:
-      - mongodb
-    env_file:
-      - .env
-    links:
-      - mongodb
-      
   order-service:
     build:
       context: ./src
@@ -37,8 +9,10 @@ services:
       - FLASK_ENV=${FLASK_ENV}
       - MONGO_URI=${MONGO_URI}
       - ORDER_DATABASE_NAME=${ORDER_DATABASE_NAME:-orderdb}
+      - RABBITMQ_URL=${RABBITMQ_URL}
       - RABBITMQ_HOST=${RABBITMQ_HOST}
       - RABBITMQ_PORT=${RABBITMQ_PORT}
+      - RABBITMQ_VHOST=${RABBITMQ_VHOST}
       - RABBITMQ_USER=${RABBITMQ_ORDER_USER}
       - RABBITMQ_PASSWORD=${RABBITMQ_ORDER_PASSWORD}
       - RABBITMQ_QUEUE_NAME=${RABBITMQ_QUEUE_NAME}
@@ -55,10 +29,12 @@ services:
       - FLASK_ENV=${FLASK_ENV}
       - MONGO_URI=${MONGO_URI}
       - DATABASE_NAME=${DATABASE_NAME}
+      - RABBITMQ_URL=${RABBITMQ_URL}
       - RABBITMQ_HOST=${RABBITMQ_HOST}
       - RABBITMQ_PORT=${RABBITMQ_PORT}
       - RABBITMQ_USER=${RABBITMQ_USER_USER}
       - RABBITMQ_PASSWORD=${RABBITMQ_USER_PASSWORD}
+      - RABBITMQ_VHOST=${RABBITMQ_VHOST}
       - RABBITMQ_QUEUE_NAME=${RABBITMQ_QUEUE_NAME}
     ports:
       - "5002:5000"
@@ -73,10 +49,12 @@ services:
       - FLASK_ENV=${FLASK_ENV}
       - MONGO_URI=${MONGO_URI}
       - DATABASE_NAME=${DATABASE_NAME}
+      - RABBITMQ_URL=${RABBITMQ_URL}
       - RABBITMQ_HOST=${RABBITMQ_HOST}
       - RABBITMQ_PORT=${RABBITMQ_PORT}
       - RABBITMQ_USER=${RABBITMQ_USER_USER}
       - RABBITMQ_PASSWORD=${RABBITMQ_USER_PASSWORD}
+      - RABBITMQ_VHOST=${RABBITMQ_VHOST}
       - RABBITMQ_QUEUE_NAME=${RABBITMQ_QUEUE_NAME}
     ports:
       - "5003:5000"
@@ -115,6 +93,3 @@ services:
       - NODE_ENV=production
     ports:
       - "1337:1337"
-
-volumes:
-  mongodb_data:
