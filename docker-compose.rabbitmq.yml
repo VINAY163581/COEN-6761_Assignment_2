@@ -1,0 +1,29 @@
+name: rabbitmq
+
+services:
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: rabbitmq-container
+    hostname: rabbitmq
+    ports:
+      - "5673:5673"
+      - "15672:15672"
+    expose:
+      - 5673
+      - 15672
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD}
+      RABBITMQ_NODE_PORT: 5673
+    healthcheck:
+      test: rabbitmq-diagnostics check_port_connectivity
+      interval: 10s
+      timeout: 30s
+      retries: 3
+    networks:
+      - main_app_network
+
+networks:
+  main_app_network:
+    external: true
+    name: coen-6761assignment-2_default

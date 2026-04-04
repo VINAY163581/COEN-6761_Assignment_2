@@ -27,12 +27,15 @@ Main services defined in Docker Compose:
 
 - `mongodb` (Mongo database)
 - `mongodb-setup` (schema setup + seed script)
-- `rabbitmq` (message broker)
 - `user-service-v1`
 - `user-service-v2`
 - `order-service`
 - `kong` (API gateway)
 - `konga` (gateway UI)
+
+RabbitMQ is defined in a separate Compose file so it appears as its own Docker Desktop project named `rabbitmq`:
+
+- `docker-compose.rabbitmq.yml`
 
 ## Ports
 
@@ -120,6 +123,21 @@ docker compose build
 docker compose up -d
 ```
 
+Start RabbitMQ separately when you want it outside the main stack:
+
+```bash
+docker compose -f docker-compose.rabbitmq.yml up -d
+```
+
+If you want a clean restart of both projects:
+
+```bash
+docker compose down -v
+docker compose -f docker-compose.rabbitmq.yml down -v
+docker compose up -d
+docker compose -f docker-compose.rabbitmq.yml up -d
+```
+
 To watch logs:
 
 ```bash
@@ -202,7 +220,7 @@ Or run all tests configured by `pytest.ini`:
 pytest
 ```
 
-The integration test starts `docker-compose.test.yml` automatically.
+The integration test starts `docker-compose.rabbitmq.yml` and `docker-compose.test.yml` automatically.
 
 ## Useful Commands
 
@@ -210,7 +228,13 @@ The integration test starts `docker-compose.test.yml` automatically.
 docker compose ps
 docker compose logs -f order-service
 docker compose logs -f user-service-v1 user-service-v2
-docker compose logs -f kong rabbitmq
+docker compose logs -f kong
+```
+
+For the separate RabbitMQ project, use:
+
+```bash
+docker compose -f docker-compose.rabbitmq.yml logs -f
 ```
 
 ## Repository Layout (Current)

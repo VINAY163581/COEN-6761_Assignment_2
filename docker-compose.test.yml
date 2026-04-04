@@ -11,8 +11,8 @@ services:
     ports:
       - "27017:27017"
     networks:
-      - test_network
-  
+      - main_app_network
+
   mongodb-setup:
     image: python:3.10-slim
     container_name: mongo-setup
@@ -26,8 +26,8 @@ services:
     links:
       - mongodb
     networks:
-      - test_network
-      
+      - main_app_network
+
   order-service:
     build:
       context: ./src
@@ -45,11 +45,8 @@ services:
       - RABBITMQ_QUEUE_NAME=${RABBITMQ_QUEUE_NAME}
     ports:
       - "5001:5000"
-    depends_on:
-      rabbitmq:
-          condition: service_healthy
     networks:
-      - test_network
+      - main_app_network
 
   user-service-v1:
     build:
@@ -68,12 +65,9 @@ services:
       - RABBITMQ_QUEUE_NAME=${RABBITMQ_QUEUE_NAME}
     ports:
       - "5002:5000"
-    depends_on:
-      rabbitmq:
-          condition: service_healthy
     networks:
-      - test_network
-  
+      - main_app_network
+
   user-service-v2:
     build:
       context: ./src
@@ -91,33 +85,8 @@ services:
       - RABBITMQ_QUEUE_NAME=${RABBITMQ_QUEUE_NAME}
     ports:
       - "5003:5000"
-    depends_on:
-      rabbitmq:
-          condition: service_healthy
     networks:
-      - test_network
-  
-  rabbitmq:
-    image: rabbitmq:3-management
-    container_name: rabbitmq-container
-    hostname: rabbitmq
-    ports:
-      - "5673:5673" # RabbitMQ messaging port
-      - "15672:15672" # RabbitMQ management UI
-    expose:
-      - 5673
-      - 15672
-    environment:
-      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER}
-      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD}
-      RABBITMQ_NODE_PORT: 5673 # had to change the default port because of a conflict with the mongodb port 
-    healthcheck:
-      test: rabbitmq-diagnostics check_port_connectivity
-      interval: 10s
-      timeout: 30s
-      retries: 3
-    networks:
-      - test_network
+      - main_app_network
 
   kong:
     image: kong:latest
@@ -125,9 +94,9 @@ services:
     build:
       context: ./src/api_gateway
       dockerfile: Dockerfile
-      args: 
+      args:
         - P_VAL=${P_VALUE}
-    env_file: 
+    env_file:
       - .env
     environment:
       - KONG_DATABASE=off
@@ -144,14 +113,14 @@ services:
       - "8443:8443"
       - "8001:8001"
       - "8444:8444"
-    depends_on: 
+    depends_on:
       - order-service
       - user-service-v1
       - user-service-v2
     networks:
-      - test_network
+      - main_app_network
 
-  konga: 
+  konga:
     container_name: api-gateway-ui
     image: pantsel/konga:latest
     environment:
@@ -159,8 +128,9 @@ services:
     ports:
       - "1337:1337"
     networks:
-      - test_network
+      - main_app_network
 
 networks:
-  test_network:
-    driver: bridge
+  main_app_network:
+    external: true
+    name: coen-6761assignment-2_default
