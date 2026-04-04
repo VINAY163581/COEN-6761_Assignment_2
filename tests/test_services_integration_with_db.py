@@ -1,4 +1,5 @@
 import os
+import uuid
 import pytest
 import requests
 import pymongo
@@ -6,6 +7,9 @@ import pika
 import subprocess
 import time
 from dotenv import load_dotenv
+
+# Unique run suffix to avoid email-uniqueness conflicts across test runs
+_RUN_ID = uuid.uuid4().hex[:8]
 
 # Load environment variables
 load_dotenv()
@@ -73,7 +77,7 @@ def test_user_creation(api_base_url, mongo_client):
     user_payload = {
         "firstName": "Integration",
         "lastName": "Tester",
-        "emails": ["integration.test@example.com"],
+        "emails": [f"integration.test.{_RUN_ID}@example.com"],
         "deliveryAddress": {
             "street": "123 Test Street",
             "city": "Testville",
@@ -100,7 +104,177 @@ def test_user_creation(api_base_url, mongo_client):
     users_collection = users_db["users"]
     user = users_collection.find_one({"userId": created_user["userId"]})
     assert user is not None
-    assert user["emails"] == ["integration.test@example.com"]
+    assert user["emails"] == [f"integration.test.{_RUN_ID}@example.com"]
+
+# Test: Order Creation (TC_02)
+def test_order_creation(api_base_url, mongo_client):
+    # Create a user first
+    user_payload = {
+        "firstName": "Order",
+        "lastName": "Creator",
+        "emails": [f"order.creator.{_RUN_ID}@example.com"],
+        "deliveryAddress": {
+            "street": "10 Order Lane",
+            "city": "OrderCity",
+            "state": "Order State",
+            "postalCode": "99999",
+            "country": "Order Country"
+        }
+    }
+    user_response = requests.post(f"{api_base_url}/users/", json=user_payload)
+    assert user_response.status_code == 201
+    user_id = user_response.json()["userId"]
+
+    # Create an order referencing the user
+    order_payload = {
+        "userId": user_id,
+        "items": [{"itemId": "ITEM001", "quantity": 2, "price": 29.99}],
+        "userEmails": [f"order.creator.{_RUN_ID}@example.com"],
+        "deliveryAddress": {
+            "street": "10 Order Lane",
+            "city": "OrderCity",
+            "state": "Order State",
+            "postalCode": "99999",
+            "country": "Order Country"
+        },
+        "orderStatus": "under process"
+    }
+    order_response = requests.post(f"{api_base_url}/orders/", json=order_payload)
+    assert order_response.status_code == 201
+    created_order = order_response.json()
+    order_id = created_order["orderId"]
+    assert created_order["userId"] == user_id
+
+    # Verify order persisted in MongoDB
+    orders_db = mongo_client["orderdb"]
+    orders_collection = orders_db["orders"]
+    order = orders_collection.find_one({"orderId": order_id})
+    assert order is not None
+    assert order["userId"] == user_id
+    assert order["orderStatus"] == "under process"
+
+
+# Test: Event-Driven User Update Propagation (TC_03)
+def test_event_propagation(api_base_url, mongo_client):
+    # Create a user
+    user_payload = {
+        "firstName": "Event",
+        "lastName": "Propagator",
+        "emails": [f"event.propagator.{_RUN_ID}@example.com"],
+        "deliveryAddress": {
+            "street": "1 Event Street",
+            "city": "EventCity",
+            "state": "Event State",
+            "postalCode": "11111",
+            "country": "Event Country"
+        }
+    }
+    user_response = requests.post(f"{api_base_url}/users/", json=user_payload)
+    assert user_response.status_code == 201
+    user_id = user_response.json()["userId"]
+
+    # Create a linked order
+    order_payload = {
+        "userId": user_id,
+        "items": [{"itemId": "ITEM002", "quantity": 1, "price": 9.99}],
+        "userEmails": [f"event.propagator.{_RUN_ID}@example.com"],
+        "deliveryAddress": {
+            "street": "1 Event Street",
+            "city": "EventCity",
+            "state": "Event State",
+            "postalCode": "11111",
+            "country": "Event Country"
+        },
+        "orderStatus": "under process"
+    }
+    order_response = requests.post(f"{api_base_url}/orders/", json=order_payload)
+    assert order_response.status_code == 201
+    order_id = order_response.json()["orderId"]
+
+    # Update the user's email and delivery address
+    update_payload = {
+        "emails": ["event.updated@example.com"],
+        "deliveryAddress": {
+            "street": "99 Updated Blvd",
+            "city": "UpdatedCity",
+            "state": "Updated State",
+            "postalCode": "22222",
+            "country": "Updated Country"
+        }
+    }
+    update_response = requests.put(f"{api_base_url}/users/{user_id}", json=update_payload)
+    assert update_response.status_code == 200
+
+    # Wait for RabbitMQ event to be consumed by the Order Service
+    time.sleep(5)
+
+    # Verify the order was updated in MongoDB via the RabbitMQ event
+    orders_db = mongo_client["orderdb"]
+    orders_collection = orders_db["orders"]
+    updated_order = orders_collection.find_one({"orderId": order_id})
+    assert updated_order is not None
+    assert updated_order["userEmails"] == ["event.updated@example.com"]
+    assert updated_order["deliveryAddress"]["street"] == "99 Updated Blvd"
+    assert updated_order["deliveryAddress"]["city"] == "UpdatedCity"
+
+
+# Test: API Gateway Routing - Strangler Pattern (TC_04)
+def test_gateway_routing(api_base_url):
+    # Verify Kong Admin API is accessible and upstreams are configured
+    admin_url = "http://localhost:8001"
+    upstream_response = requests.get(f"{admin_url}/upstreams/user_service_upstream/targets")
+    assert upstream_response.status_code == 200
+
+    targets = upstream_response.json().get("data", [])
+    assert len(targets) == 2, "Expected two upstream targets (v1 and v2)"
+
+    # Map targets to weights
+    target_weights = {t["target"]: t["weight"] for t in targets}
+    v1_weight = target_weights.get("user-service-v1:5000", 0)
+    v2_weight = target_weights.get("user-service-v2:5000", 0)
+    assert v1_weight + v2_weight == 100, "Total upstream weight must equal 100"
+
+    # Send requests through Kong and detect which version handles them
+    # V2 sets 'createdAt' automatically; V1 does not
+    v1_count = 0
+    v2_count = 0
+    num_requests = 10
+    for i in range(num_requests):
+        payload = {
+            "firstName": "GW",
+            "lastName": f"RouteTest{i}",
+            "emails": [f"gateway.route.test.{_RUN_ID}.{i}@example.com"],
+            "deliveryAddress": {
+                "street": f"{i} Gateway Rd",
+                "city": "GatewayCity",
+                "state": "GW State",
+                "postalCode": "33333",
+                "country": "GW Country"
+            }
+        }
+        resp = requests.post(f"{api_base_url}/users/", json=payload)
+        assert resp.status_code == 201
+        if resp.json().get("createdAt"):
+            v2_count += 1
+        else:
+            v1_count += 1
+
+    # Validate routing distribution matches configured weights
+    # With P_VALUE=100 (v1_weight=100, v2_weight=0), all should go to v1
+    # With P_VALUE=0 (v1_weight=0, v2_weight=100), all should go to v2
+    # With P_VALUE=50, approximately half to each (within 30% tolerance for 10 requests)
+    if v1_weight == 100:
+        assert v1_count == num_requests, f"Expected all {num_requests} requests to v1, got {v1_count}"
+    elif v2_weight == 100:
+        assert v2_count == num_requests, f"Expected all {num_requests} requests to v2, got {v2_count}"
+    else:
+        # Mixed: verify neither version gets 0 traffic (within tolerance)
+        tolerance = 0.3 * num_requests
+        expected_v1 = num_requests * v1_weight / 100
+        assert abs(v1_count - expected_v1) <= tolerance, (
+            f"v1 got {v1_count} requests, expected ~{expected_v1} (±{tolerance})"
+        )
+
 
 # Test: User Update
 def test_user_update(api_base_url, mongo_client):
@@ -108,7 +282,7 @@ def test_user_update(api_base_url, mongo_client):
     user_payload = {
         "firstName": "Update",
         "lastName": "Tester",
-        "emails": ["update.test@example.com"],
+        "emails": [f"update.test.{_RUN_ID}@example.com"],
         "deliveryAddress": {
             "street": "123 Test Street",
             "city": "Testville",
@@ -155,7 +329,7 @@ def test_user_update(api_base_url, mongo_client):
     new_user = update_result[1]
     
     # Check old user data
-    assert old_user["emails"] == ["update.test@example.com"]
+    assert old_user["emails"] == [f"update.test.{_RUN_ID}@example.com"]
     assert old_user["deliveryAddress"]["street"] == "123 Test Street"
     
     # Check new user data
